@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - ADUSTech Riders</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">🏍️ ADUSTech <span>Riders</span></a>
+    <div class="nav-user">
+      <span id="userName"></span>
+      <span class="badge">Admin</span>
+      <button id="logoutBtn" class="btn btn-outline btn-sm" style="color:white;border-color:white;">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div id="alertContainer"></div>
+
+    <!-- Stats -->
+    <div class="grid-4" id="statsGrid">
+      <div class="stat-card"><div class="spinner"></div></div>
+    </div>
+
+    <!-- Rider Management -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🪪 Rider Management</h2>
+        <button class="btn btn-sm btn-outline" id="refreshRiders">Refresh</button>
+      </div>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Rider ID</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>License</th>
+              <th>Plate</th>
+              <th>Model</th>
+              <th>ID Card</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ridersTable">
+            <tr><td colspan="9" style="text-align:center;"><div class="spinner"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Bookings -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 All Bookings</h2>
+      </div>
+      <div id="allBookings">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const user = checkAuth('admin');
+    if (!user) throw new Error('Not authenticated');
+
+    document.getElementById('userName').textContent = user.full_name;
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await API.logout();
+      clearUser();
+      window.location.href = '/login.html';
+    });
+
+    async function loadStats() {
+      try {
+        const { stats } = await API.adminGetStats();
+        document.getElementById('statsGrid').innerHTML = `
+          <div class="stat-card">
+            <div class="stat-value">${stats.total_users}</div>
+            <div class="stat-label">Registered Users</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.approved_riders}</div>
+            <div class="stat-label">Approved Riders</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.pending_riders}</div>
+            <div class="stat-label">Pending Approval</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.available_riders}</div>
+            <div class="stat-label">Available Now</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.total_bookings}</div>
+            <div class="stat-label">Total Bookings</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${stats.active_bookings}</div>
+            <div class="stat-label">Active Bookings</div>
+          </div>
+        `;
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    }
+
+    async function loadRiders() {
+      const tbody = document.getElementById('ridersTable');
+      try {
+        const { riders } = await API.adminGetRiders();
+        if (!riders.length) {
+          tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No riders registered</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = riders.map(r => `
+          <tr>
+            <td><span class="rider-id-badge">${r.rider_id_number}</span></td>
+            <td>${r.full_name}</td>
+            <td>${r.phone}</td>
+            <td>${r.license_number}</td>
+            <td>${r.motorcycle_plate}</td>
+            <td>${r.motorcycle_model}</td>
+            <td>${r.id_card_number}</td>
+            <td><span class="status-badge status-${r.status}">${r.status}</span></td>
+            <td>
+              ${r.status === 'pending' ? `
+                <button class="btn btn-sm btn-success" onclick="updateRiderStatus(${r.id},'approved')">Approve</button>
+                <button class="btn btn-sm btn-danger" onclick="updateRiderStatus(${r.id},'rejected')">Reject</button>
+              ` : ''}
+              ${r.status === 'approved' ? `
+                <button class="btn btn-sm btn-danger" onclick="updateRiderStatus(${r.id},'suspended')">Suspend</button>
+              ` : ''}
+              ${r.status === 'suspended' ? `
+                <button class="btn btn-sm btn-success" onclick="updateRiderStatus(${r.id},'approved')">Reinstate</button>
+              ` : ''}
+            </td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="9"><div class="alert alert-error">${err.message}</div></td></tr>`;
+      }
+    }
+
+    async function loadBookings() {
+      const container = document.getElementById('allBookings');
+      try {
+        const { bookings } = await API.getMyBookings();
+        if (!bookings.length) {
+          container.innerHTML = '<div class="empty-state"><p>No bookings yet</p></div>';
+          return;
+        }
+        container.innerHTML = bookings.map(b => `
+          <div class="booking-item">
+            <div>
+              <div class="booking-route">
+                <strong>${b.pickup_location}</strong>
+                <span class="arrow">→</span>
+                <strong>${b.destination}</strong>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+                Passenger: ${b.passenger_name || 'N/A'} • Rider: ${b.rider_name || 'Unassigned'} • ${formatDate(b.requested_at)}
+              </p>
+            </div>
+            <span class="status-badge status-${b.status}">${b.status.replace('_', ' ')}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    window.updateRiderStatus = async (id, status) => {
+      if (!confirm(`Are you sure you want to ${status} this rider?`)) return;
+      try {
+        await API.adminUpdateRiderStatus(id, status);
+        showAlert(document.getElementById('alertContainer'), `Rider ${status} successfully`, 'success');
+        loadRiders();
+        loadStats();
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    };
+
+    document.getElementById('refreshRiders').addEventListener('click', () => {
+      loadRiders();
+      loadStats();
+    });
+
+    loadStats();
+    loadRiders();
+    loadBookings();
+  </script>
+</body>
+</html>

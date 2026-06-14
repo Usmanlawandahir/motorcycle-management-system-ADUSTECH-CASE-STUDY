@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Passenger Dashboard - ADUSTech Riders</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">🏍️ ADUSTech <span>Riders</span></a>
+    <div class="nav-user">
+      <span id="userName"></span>
+      <span class="badge">Passenger</span>
+      <button id="logoutBtn" class="btn btn-outline btn-sm" style="color:white;border-color:white;">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div id="alertContainer"></div>
+
+    <div class="grid-2">
+      <!-- Book a Ride -->
+      <div class="card">
+        <div class="card-header">
+          <h2>📍 Book a Ride</h2>
+        </div>
+        <form id="bookingForm">
+          <div class="form-group">
+            <label for="pickup">Pickup Location</label>
+            <select id="pickup" class="form-control" required>
+              <option value="">Select pickup location</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="destination">Destination</label>
+            <select id="destination" class="form-control" required>
+              <option value="">Select destination</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="riderSelect">Preferred Rider (Optional)</label>
+            <select id="riderSelect" class="form-control">
+              <option value="">Any available rider</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="notes">Notes (Optional)</label>
+            <input type="text" id="notes" class="form-control" placeholder="e.g. Waiting at the main gate">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Request Ride</button>
+        </form>
+      </div>
+
+      <!-- Available Riders Map -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🏍️ Nearby Riders</h2>
+          <button class="btn btn-sm btn-outline" id="refreshRiders">Refresh</button>
+        </div>
+        <div class="map-container" id="ridersMap">
+          <p style="color:var(--text-muted);">Loading riders...</p>
+        </div>
+        <div id="ridersList" style="margin-top:1rem;"></div>
+      </div>
+    </div>
+
+    <!-- My Bookings -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 My Ride History</h2>
+        <button class="btn btn-sm btn-outline" id="refreshBookings">Refresh</button>
+      </div>
+      <div id="bookingsList">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const user = checkAuth('user');
+    if (!user) throw new Error('Not authenticated');
+
+    document.getElementById('userName').textContent = user.full_name;
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await API.logout();
+      clearUser();
+      window.location.href = '/login.html';
+    });
+
+    let campusLocations = [];
+
+    async function loadLocations() {
+      const { locations } = await API.getCampusLocations();
+      campusLocations = locations;
+      const pickup = document.getElementById('pickup');
+      const dest = document.getElementById('destination');
+      locations.forEach(loc => {
+        pickup.innerHTML += `<option value="${loc.name}" data-lat="${loc.latitude}" data-lng="${loc.longitude}">${loc.name} (${loc.category})</option>`;
+        dest.innerHTML += `<option value="${loc.name}" data-lat="${loc.latitude}" data-lng="${loc.longitude}">${loc.name} (${loc.category})</option>`;
+      });
+    }
+
+    async function loadRiders() {
+      const mapEl = document.getElementById('ridersMap');
+      const listEl = document.getElementById('ridersList');
+      const selectEl = document.getElementById('riderSelect');
+
+      try {
+        const { riders } = await API.getAvailableRiders(11.7860, 8.8710);
+
+        if (!riders.length) {
+          mapEl.innerHTML = '<p style="color:var(--text-muted);">No riders available right now</p>';
+          listEl.innerHTML = '';
+          return;
+        }
+
+        mapEl.innerHTML = riders.map((r, i) => {
+          const left = 15 + (i * 18) % 70;
+          const top = 20 + (i * 23) % 60;
+          return `<div class="map-pin" style="left:${left}%;top:${top}%;" title="${r.full_name}"></div>`;
+        }).join('');
+        mapEl.innerHTML += '<p style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);color:var(--text-muted);font-size:0.8rem;">ADUSTech Campus Map</p>';
+
+        listEl.innerHTML = riders.map(r => `
+          <div class="rider-card" style="margin-bottom:0.5rem;">
+            <div class="rider-avatar">${getInitials(r.full_name)}</div>
+            <div class="rider-info">
+              <h4>${r.full_name} <span class="rider-id-badge">${r.rider_id_number}</span></h4>
+              <p>${r.motorcycle_model} • ${r.motorcycle_plate}</p>
+              <div class="rider-meta">
+                <span>⭐ ${r.rating}</span>
+                <span>📞 ${r.phone}</span>
+                ${r.distance ? `<span>📏 ${r.distance} km</span>` : ''}
+              </div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="selectRider(${r.id})">Select</button>
+          </div>
+        `).join('');
+
+        selectEl.innerHTML = '<option value="">Any available rider</option>' +
+          riders.map(r => `<option value="${r.id}">${r.full_name} (${r.rider_id_number})</option>`).join('');
+      } catch (err) {
+        mapEl.innerHTML = `<p style="color:var(--danger);">${err.message}</p>`;
+      }
+    }
+
+    window.selectRider = (id) => {
+      document.getElementById('riderSelect').value = id;
+      showAlert(document.getElementById('alertContainer'), 'Rider selected!', 'success');
+    };
+
+    async function loadBookings() {
+      const container = document.getElementById('bookingsList');
+      try {
+        const { bookings } = await API.getMyBookings();
+        if (!bookings.length) {
+          container.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No rides yet. Book your first ride above!</p></div>';
+          return;
+        }
+        container.innerHTML = bookings.map(b => `
+          <div class="booking-item">
+            <div>
+              <div class="booking-route">
+                <strong>${b.pickup_location}</strong>
+                <span class="arrow">→</span>
+                <strong>${b.destination}</strong>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+                ${b.rider_name ? `Rider: ${b.rider_name} (${b.rider_id_number || ''})` : 'Awaiting rider assignment'}
+                • ${formatDate(b.requested_at)}
+              </p>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="status-badge status-${b.status}">${b.status.replace('_', ' ')}</span>
+              ${b.status === 'pending' ? `<button class="btn btn-sm btn-danger" onclick="cancelBooking(${b.id})">Cancel</button>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    window.cancelBooking = async (id) => {
+      try {
+        await API.updateBookingStatus(id, 'cancelled');
+        showAlert(document.getElementById('alertContainer'), 'Booking cancelled', 'success');
+        loadBookings();
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    };
+
+    document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pickupOpt = document.getElementById('pickup').selectedOptions[0];
+      const destOpt = document.getElementById('destination').selectedOptions[0];
+
+      try {
+        await API.createBooking({
+          pickup_location: document.getElementById('pickup').value,
+          pickup_lat: pickupOpt.dataset.lat,
+          pickup_lng: pickupOpt.dataset.lng,
+          destination: document.getElementById('destination').value,
+          destination_lat: destOpt.dataset.lat,
+          destination_lng: destOpt.dataset.lng,
+          rider_id: document.getElementById('riderSelect').value || null,
+          notes: document.getElementById('notes').value
+        });
+        showAlert(document.getElementById('alertContainer'), 'Ride requested successfully!', 'success');
+        document.getElementById('bookingForm').reset();
+        loadBookings();
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    });
+
+    document.getElementById('refreshRiders').addEventListener('click', loadRiders);
+    document.getElementById('refreshBookings').addEventListener('click', loadBookings);
+
+    loadLocations();
+    loadRiders();
+    loadBookings();
+    setInterval(loadRiders, 30000);
+  </script>
+</body>
+</html>

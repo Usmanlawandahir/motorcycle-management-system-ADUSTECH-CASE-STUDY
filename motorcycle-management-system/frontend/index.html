@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ADUSTech Riders - Motorcycle Booking System</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">🏍️ ADUSTech <span>Riders</span></a>
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how-it-works">How It Works</a></li>
+      <li><a href="/login.html">Login</a></li>
+      <li><a href="/register.html" class="btn btn-accent btn-sm">Get Started</a></li>
+    </ul>
+    <div class="nav-user hidden" id="navUser">
+      <span id="navUserName"></span>
+      <span class="badge" id="navUserRole"></span>
+      <a href="#" id="navDashboard" class="btn btn-accent btn-sm">Dashboard</a>
+      <button id="navLogout" class="btn btn-outline btn-sm" style="color:white;border-color:white;">Logout</button>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <h1>Quick & Safe Rides Across Campus</h1>
+    <p>Connect with verified motorcycle riders at ADUSTech Wudil. Book rides between faculties, hostels, and off-campus locations in seconds.</p>
+    <div class="hero-actions">
+      <a href="/register.html" class="btn btn-accent">Book a Ride</a>
+      <a href="/register.html?role=rider" class="btn btn-outline" style="color:white;border-color:white;">Become a Rider</a>
+    </div>
+  </section>
+
+  <section class="features container" id="features">
+    <h2>Why ADUSTech Riders?</h2>
+    <div class="grid-3">
+      <div class="feature-card">
+        <div class="feature-icon">📍</div>
+        <h3>Real-Time Location</h3>
+        <p>Find available riders near you on campus with live location tracking.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛡️</div>
+        <h3>Verified Riders</h3>
+        <p>Every rider is registered with license, ID card, and unique rider identification number.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Quick Booking</h3>
+        <p>Request rides between faculties, hostels, gates, and Wudil market instantly.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏫</div>
+        <h3>Campus Coverage</h3>
+        <p>Pre-loaded locations for all major faculties, hostels, and landmarks at ADUSTech.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📱</div>
+        <h3>Easy to Use</h3>
+        <p>Simple interface designed for students — book a ride in just a few taps.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <h3>Secure Platform</h3>
+        <p>Admin-verified riders with proper identification for your safety and peace of mind.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container" id="how-it-works" style="padding-bottom:4rem;">
+    <h2 style="text-align:center;color:var(--primary);margin-bottom:2rem;">How It Works</h2>
+    <div class="grid-3">
+      <div class="card" style="text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem;">1️⃣</div>
+        <h3 style="color:var(--primary);margin-bottom:0.5rem;">Register</h3>
+        <p style="color:var(--text-muted);font-size:0.9rem;">Create an account as a passenger or register as a verified motorcycle rider.</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem;">2️⃣</div>
+        <h3 style="color:var(--primary);margin-bottom:0.5rem;">Find a Rider</h3>
+        <p style="color:var(--text-muted);font-size:0.9rem;">View available riders near your location on campus in real-time.</p>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:0.5rem;">3️⃣</div>
+        <h3 style="color:var(--primary);margin-bottom:0.5rem;">Book & Ride</h3>
+        <p style="color:var(--text-muted);font-size:0.9rem;">Request a ride, get picked up, and travel safely to your destination.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="container" id="availableSection" style="padding-bottom:4rem;">
+    <h2 style="text-align:center;color:var(--primary);margin-bottom:2rem;">Available Riders Now</h2>
+    <div id="ridersPreview" class="grid-2">
+      <div class="empty-state"><div class="spinner"></div></div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p>&copy; 2024 ADUSTech Riders Management System — Aliko Dangote University of Science and Technology, Wudil</p>
+    <p style="margin-top:0.5rem;opacity:0.7;">A Case Study Project — Faculty of Computing and Information Technology</p>
+  </footer>
+
+  <script src="/js/api.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const user = JSON.parse(sessionStorage.getItem('user') || 'null');
+      if (user) {
+        document.getElementById('navLinks').classList.add('hidden');
+        document.getElementById('navUser').classList.remove('hidden');
+        document.getElementById('navUserName').textContent = user.full_name;
+        document.getElementById('navUserRole').textContent = user.role;
+
+        const dashMap = { user: '/user-dashboard.html', rider: '/rider-dashboard.html', admin: '/admin-dashboard.html' };
+        document.getElementById('navDashboard').href = dashMap[user.role] || '/';
+        document.getElementById('navLogout').addEventListener('click', async (e) => {
+          e.preventDefault();
+          await API.logout();
+          clearUser();
+          window.location.reload();
+        });
+      }
+
+      try {
+        const { riders } = await API.getAvailableRiders();
+        const container = document.getElementById('ridersPreview');
+        if (!riders.length) {
+          container.innerHTML = '<div class="empty-state"><div class="icon">🏍️</div><p>No riders available right now. Check back soon!</p></div>';
+          return;
+        }
+        container.innerHTML = riders.slice(0, 4).map(r => `
+          <div class="rider-card">
+            <div class="rider-avatar">${getInitials(r.full_name)}</div>
+            <div class="rider-info">
+              <h4>${r.full_name} <span class="rider-id-badge">${r.rider_id_number}</span></h4>
+              <p>${r.motorcycle_model} • ${r.motorcycle_plate}</p>
+              <div class="rider-meta">
+                <span><span class="status-dot available"></span> Available</span>
+                <span>⭐ ${r.rating}</span>
+                <span>🛣️ ${r.total_rides} rides</span>
+                ${r.location_name ? `<span>📍 ${r.location_name}</span>` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } catch {
+        document.getElementById('ridersPreview').innerHTML =
+          '<div class="empty-state"><p>Start the backend server to see available riders.</p></div>';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - ADUSTech Riders</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">🏍️ ADUSTech <span>Riders</span></a>
+  </nav>
+
+  <div class="auth-container">
+    <div class="auth-card" style="max-width:560px;">
+      <h2>Create Account</h2>
+      <p class="subtitle">Join ADUSTech Riders as a passenger or motorcycle rider</p>
+      <div id="alertContainer"></div>
+
+      <div class="tabs">
+        <button class="tab active" data-role="user">Passenger</button>
+        <button class="tab" data-role="rider">Rider</button>
+      </div>
+
+      <form id="registerForm">
+        <input type="hidden" id="role" value="user">
+
+        <div class="form-group">
+          <label for="full_name">Full Name</label>
+          <input type="text" id="full_name" class="form-control" placeholder="Enter your full name" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" class="form-control" placeholder="you@adustech.edu.ng" required>
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone Number</label>
+            <input type="tel" id="phone" class="form-control" placeholder="08012345678" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" class="form-control" placeholder="Minimum 6 characters" required minlength="6">
+        </div>
+
+        <div id="riderFields" class="hidden">
+          <hr style="margin:1.5rem 0;border-color:var(--border);">
+          <h3 style="color:var(--primary);margin-bottom:1rem;font-size:1rem;">Rider Information</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="license_number">License Number</label>
+              <input type="text" id="license_number" class="form-control" placeholder="Rider license number">
+            </div>
+            <div class="form-group">
+              <label for="id_card_number">ID Card Number</label>
+              <input type="text" id="id_card_number" class="form-control" placeholder="National ID / School ID">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="motorcycle_plate">Motorcycle Plate</label>
+              <input type="text" id="motorcycle_plate" class="form-control" placeholder="e.g. KD 123 AB">
+            </div>
+            <div class="form-group">
+              <label for="motorcycle_model">Motorcycle Model</label>
+              <input type="text" id="motorcycle_model" class="form-control" placeholder="e.g. Bajaj Boxer">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="motorcycle_color">Motorcycle Color</label>
+            <input type="text" id="motorcycle_color" class="form-control" placeholder="e.g. Red">
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block" id="registerBtn">Create Account</button>
+      </form>
+      <div class="auth-footer">
+        Already have an account? <a href="/login.html">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const defaultRole = params.get('role') || 'user';
+
+    document.querySelectorAll('.tab').forEach(tab => {
+      if (tab.dataset.role === defaultRole) {
+        tab.classList.add('active');
+      } else if (defaultRole !== 'user') {
+        tab.classList.remove('active');
+      }
+
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const role = tab.dataset.role;
+        document.getElementById('role').value = role;
+        document.getElementById('riderFields').classList.toggle('hidden', role !== 'rider');
+      });
+    });
+
+    if (defaultRole === 'rider') {
+      document.getElementById('role').value = 'rider';
+      document.getElementById('riderFields').classList.remove('hidden');
+      document.querySelector('.tab[data-role="user"]').classList.remove('active');
+      document.querySelector('.tab[data-role="rider"]').classList.add('active');
+    }
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('registerBtn');
+      btn.disabled = true;
+      btn.textContent = 'Creating account...';
+
+      const role = document.getElementById('role').value;
+      const data = {
+        full_name: document.getElementById('full_name').value,
+        email: document.getElementById('email').value,
+        phone: document.getElementById('phone').value,
+        password: document.getElementById('password').value,
+        role
+      };
+
+      if (role === 'rider') {
+        data.license_number = document.getElementById('license_number').value;
+        data.id_card_number = document.getElementById('id_card_number').value;
+        data.motorcycle_plate = document.getElementById('motorcycle_plate').value;
+        data.motorcycle_model = document.getElementById('motorcycle_model').value;
+        data.motorcycle_color = document.getElementById('motorcycle_color').value;
+      }
+
+      try {
+        await API.register(data);
+        showAlert(document.getElementById('alertContainer'),
+          role === 'rider' ? 'Registration successful! Your rider account is pending admin approval.' : 'Registration successful! Please sign in.',
+          'success');
+        setTimeout(() => window.location.href = '/login.html', 2000);
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+        btn.disabled = false;
+        btn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

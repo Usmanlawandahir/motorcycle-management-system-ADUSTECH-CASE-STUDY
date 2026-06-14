@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rider Dashboard - ADUSTech Riders</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">🏍️ ADUSTech <span>Riders</span></a>
+    <div class="nav-user">
+      <span id="userName"></span>
+      <span class="badge">Rider</span>
+      <button id="logoutBtn" class="btn btn-outline btn-sm" style="color:white;border-color:white;">Logout</button>
+    </div>
+  </nav>
+
+  <div class="container">
+    <div id="alertContainer"></div>
+
+    <!-- Rider Profile Card -->
+    <div class="card" id="profileCard">
+      <div class="card-header">
+        <h2>🪪 Rider Profile</h2>
+        <div class="toggle-container">
+          <span id="availabilityLabel">Unavailable</span>
+          <label class="toggle">
+            <input type="checkbox" id="availabilityToggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+      </div>
+      <div id="profileInfo" class="grid-3">
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Location Update -->
+      <div class="card">
+        <div class="card-header">
+          <h2>📍 Update Location</h2>
+        </div>
+        <form id="locationForm">
+          <div class="form-group">
+            <label for="locationSelect">Current Location</label>
+            <select id="locationSelect" class="form-control" required>
+              <option value="">Select your current location</option>
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Update My Location</button>
+        </form>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.75rem;">
+          Your location is shared with passengers when you are available.
+        </p>
+      </div>
+
+      <!-- Pending Ride Requests -->
+      <div class="card">
+        <div class="card-header">
+          <h2>🔔 Ride Requests</h2>
+          <button class="btn btn-sm btn-outline" id="refreshRequests">Refresh</button>
+        </div>
+        <div id="requestsList">
+          <div class="spinner"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ride History -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 My Rides</h2>
+      </div>
+      <div id="ridesList">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    const user = checkAuth('rider');
+    if (!user) throw new Error('Not authenticated');
+
+    document.getElementById('userName').textContent = user.full_name;
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await API.logout();
+      clearUser();
+      window.location.href = '/login.html';
+    });
+
+    let riderProfile = null;
+
+    async function loadProfile() {
+      try {
+        const { user: currentUser } = await API.getMe();
+        riderProfile = currentUser.rider;
+        const container = document.getElementById('profileInfo');
+
+        if (!riderProfile) {
+          container.innerHTML = '<div class="alert alert-error">Rider profile not found</div>';
+          return;
+        }
+
+        if (riderProfile.status === 'pending') {
+          document.getElementById('availabilityToggle').disabled = true;
+          container.innerHTML = `
+            <div class="alert alert-warning" style="grid-column:1/-1;">
+              Your rider account is pending admin approval. You will be notified once approved.
+            </div>
+            <div><strong>Rider ID:</strong> <span class="rider-id-badge">${riderProfile.rider_id_number}</span></div>
+            <div><strong>License:</strong> ${riderProfile.license_number}</div>
+            <div><strong>Plate:</strong> ${riderProfile.motorcycle_plate}</div>
+          `;
+          return;
+        }
+
+        if (riderProfile.status === 'rejected' || riderProfile.status === 'suspended') {
+          document.getElementById('availabilityToggle').disabled = true;
+          container.innerHTML = `<div class="alert alert-error" style="grid-column:1/-1;">Your account has been ${riderProfile.status}. Contact admin for assistance.</div>`;
+          return;
+        }
+
+        document.getElementById('availabilityToggle').checked = riderProfile.is_available;
+        document.getElementById('availabilityLabel').textContent = riderProfile.is_available ? 'Available' : 'Unavailable';
+
+        container.innerHTML = `
+          <div><strong>Rider ID:</strong> <span class="rider-id-badge">${riderProfile.rider_id_number}</span></div>
+          <div><strong>License:</strong> ${riderProfile.license_number}</div>
+          <div><strong>Plate:</strong> ${riderProfile.motorcycle_plate}</div>
+          <div><strong>Model:</strong> ${riderProfile.motorcycle_model}</div>
+          <div><strong>Rating:</strong> ⭐ ${riderProfile.rating}</div>
+          <div><strong>Total Rides:</strong> ${riderProfile.total_rides}</div>
+        `;
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    }
+
+    document.getElementById('availabilityToggle').addEventListener('change', async (e) => {
+      try {
+        const result = await API.toggleAvailability();
+        document.getElementById('availabilityLabel').textContent = result.is_available ? 'Available' : 'Unavailable';
+        showAlert(document.getElementById('alertContainer'), result.message, 'success');
+      } catch (err) {
+        e.target.checked = !e.target.checked;
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    });
+
+    async function loadLocations() {
+      const { locations } = await API.getCampusLocations();
+      const select = document.getElementById('locationSelect');
+      locations.forEach(loc => {
+        select.innerHTML += `<option value="${loc.name}" data-lat="${loc.latitude}" data-lng="${loc.longitude}">${loc.name}</option>`;
+      });
+    }
+
+    document.getElementById('locationForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const opt = document.getElementById('locationSelect').selectedOptions[0];
+      if (!opt.value) return;
+
+      try {
+        await API.updateLocation({
+          latitude: opt.dataset.lat,
+          longitude: opt.dataset.lng,
+          location_name: opt.value
+        });
+        showAlert(document.getElementById('alertContainer'), 'Location updated!', 'success');
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    });
+
+    async function loadRequests() {
+      const container = document.getElementById('requestsList');
+      try {
+        const { bookings } = await API.getMyBookings();
+        const pending = bookings.filter(b => b.status === 'pending' || b.status === 'accepted' || b.status === 'in_progress');
+
+        if (!pending.length) {
+          container.innerHTML = '<div class="empty-state"><div class="icon">🔔</div><p>No pending ride requests</p></div>';
+          return;
+        }
+
+        container.innerHTML = pending.map(b => `
+          <div class="booking-item">
+            <div>
+              <div class="booking-route">
+                <strong>${b.pickup_location}</strong>
+                <span class="arrow">→</span>
+                <strong>${b.destination}</strong>
+              </div>
+              <p style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">
+                Passenger: ${b.passenger_name} • 📞 ${b.passenger_phone || 'N/A'}
+                ${b.notes ? `<br>Note: ${b.notes}` : ''}
+              </p>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <span class="status-badge status-${b.status}">${b.status.replace('_', ' ')}</span>
+              ${b.status === 'pending' ? `<button class="btn btn-sm btn-success" onclick="updateRide(${b.id},'accepted')">Accept</button>` : ''}
+              ${b.status === 'accepted' ? `<button class="btn btn-sm btn-primary" onclick="updateRide(${b.id},'in_progress')">Start Ride</button>` : ''}
+              ${b.status === 'in_progress' ? `<button class="btn btn-sm btn-success" onclick="updateRide(${b.id},'completed')">Complete</button>` : ''}
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    async function loadRideHistory() {
+      const container = document.getElementById('ridesList');
+      try {
+        const { bookings } = await API.getMyBookings();
+        const completed = bookings.filter(b => b.status === 'completed' || b.status === 'cancelled');
+
+        if (!completed.length) {
+          container.innerHTML = '<div class="empty-state"><p>No completed rides yet</p></div>';
+          return;
+        }
+
+        container.innerHTML = completed.map(b => `
+          <div class="booking-item">
+            <div class="booking-route">
+              <strong>${b.pickup_location}</strong>
+              <span class="arrow">→</span>
+              <strong>${b.destination}</strong>
+              <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${b.passenger_name} • ${formatDate(b.requested_at)}</span>
+            </div>
+            <span class="status-badge status-${b.status}">${b.status}</span>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+      }
+    }
+
+    window.updateRide = async (id, status) => {
+      try {
+        await API.updateBookingStatus(id, status);
+        showAlert(document.getElementById('alertContainer'), `Ride ${status.replace('_', ' ')}!`, 'success');
+        loadRequests();
+        loadRideHistory();
+        loadProfile();
+      } catch (err) {
+        showAlert(document.getElementById('alertContainer'), err.message);
+      }
+    };
+
+    document.getElementById('refreshRequests').addEventListener('click', loadRequests);
+
+    loadProfile();
+    loadLocations();
+    loadRequests();
+    loadRideHistory();
+    setInterval(loadRequests, 15000);
+  </script>
+</body>
+</html>
